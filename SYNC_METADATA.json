@@ -1,0 +1,9 @@
+{
+  "source_repository": "usmsb/opc-platform",
+  "source_ref": "180701726522ffd26e9ae325a2e76c6227a2987b",
+  "source_paths": [
+    "peas/pea_core",
+    "peas/*/README.md"
+  ],
+  "target_package": "opc-pea-sdk"
+}

@@ -1,0 +1,35 @@
+name: PEA SDK CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install SDK
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: Import and compile
+        run: |
+          python -m compileall -q src/pea_core
+          python - <<'PY'
+          from pea_core import BaseHarness, SandboxEmbedding, VectorMemory, parse_action
+
+          assert BaseHarness
+          assert SandboxEmbedding
+          assert VectorMemory
+          assert parse_action('{"action":"say","text":"ok"}')["text"] == "ok"
+          PY

@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OPC 老板后台</title>
+<style>
+  :root{
+    --bg:#0f1221; --panel:#181b2e; --panel2:#1f2336; --line:#2b3050; --ink:#e8ebf5;
+    --muted:#9aa3c4; --accent:#6c8cff; --accent2:#39d0a8; --danger:#ff6b81; --warn:#ffb454;
+    --radius:12px; --shadow:0 8px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+       background:var(--bg);color:var(--ink);font-size:14px}
+  a{color:var(--accent)}
+  button{font:inherit;cursor:pointer;border:none;border-radius:8px;padding:8px 14px;background:var(--accent);color:#fff}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+  button.danger{background:var(--danger)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  input,select,textarea{font:inherit;background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+       border-radius:8px;padding:8px 10px;width:100%}
+  textarea{min-height:90px;resize:vertical;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+  .hidden{display:none!important}
+
+  /* 登录 */
+  #login{min-height:100vh;display:flex;align-items:center;justify-content:center}
+  #login .card{width:340px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+       padding:28px;box-shadow:var(--shadow)}
+  #login h1{font-size:18px;margin:0 0 4px}
+  #login .sub{color:var(--muted);font-size:12px;margin-bottom:18px}
+  #login label{display:block;font-size:12px;color:var(--muted);margin:12px 0 6px}
+  #login button{width:100%;margin-top:18px}
+  .err{color:var(--danger);font-size:12px;margin-top:10px;min-height:16px}
+
+  /* 主框架 */
+  #app{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+  aside{background:var(--panel);border-right:1px solid var(--line);padding:16px 10px;display:flex;flex-direction:column}
+  aside .brand{font-weight:700;font-size:15px;padding:6px 10px 14px;display:flex;gap:8px;align-items:center}
+  aside .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--accent2)}
+  nav{flex:1;overflow:auto}
+  nav .item{padding:9px 12px;border-radius:8px;color:var(--muted);cursor:pointer;display:flex;justify-content:space-between;
+       align-items:center;margin-bottom:2px}
+  nav .item:hover{background:var(--panel2);color:var(--ink)}
+  nav .item.active{background:var(--accent);color:#fff}
+  nav .item .badge{font-size:11px;opacity:.8}
+  nav .group{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:14px 10px 6px}
+  aside .sidelink{display:block;margin:10px 6px 0;padding:9px 12px;border:1px solid var(--line);border-radius:8px;color:var(--accent);text-decoration:none;font-size:13px;text-align:center}
+  aside .sidelink:hover{background:var(--panel2)}
+  aside .who{font-size:12px;color:var(--muted);padding:10px;border-top:1px solid var(--line);margin-top:10px}
+  main{padding:22px 26px;overflow:auto;max-height:100vh}
+  .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+  .head h2{margin:0;font-size:18px}
+  .toolbar{display:flex;gap:8px;align-items:center}
+  .toolbar input{width:220px}
+
+  /* 概览卡片 */
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+  .card .k{color:var(--muted);font-size:12px;margin-bottom:8px}
+  .card .v{font-size:22px;font-weight:700}
+  .card .v.small{font-size:14px;font-weight:600;line-height:1.6}
+  .section-title{font-size:13px;color:var(--muted);margin:18px 0 8px}
+
+  /* 图表 */
+  .chart{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+  .bars{display:flex;align-items:flex-end;gap:6px;height:160px;margin-top:8px}
+  .bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;min-width:0}
+  .bar .col{width:70%;background:linear-gradient(var(--accent),var(--accent2));border-radius:4px 4px 0 0;min-height:2px;transition:.2s}
+  .bar .lbl{font-size:10px;color:var(--muted);white-space:nowrap;transform:rotate(-40deg);transform-origin:top left;height:34px}
+
+  /* 表格 */
+  .tablewrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:auto}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap;max-width:280px;
+       overflow:hidden;text-overflow:ellipsis}
+  th{color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--panel2)}
+  tbody tr{cursor:pointer}
+  tbody tr:hover{background:var(--panel2)}
+  .pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:10px;color:var(--muted);font-size:12px}
+  .pill{padding:2px 8px;border-radius:99px;font-size:11px;background:var(--panel2);border:1px solid var(--line)}
+  .pill.paid{color:var(--accent2);border-color:var(--accent2)}
+  .pill.pending{color:var(--warn);border-color:var(--warn)}
+  .pill.refunded,.pill.failed{color:var(--danger);border-color:var(--danger)}
+
+  /* 抽屉 */
+  .drawer-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;justify-content:flex-end;z-index:50}
+  .drawer{width:520px;max-width:92vw;background:var(--panel);height:100vh;overflow:auto;padding:22px;box-shadow:var(--shadow)}
+  .drawer .head{position:sticky;top:-22px;background:var(--panel);padding-top:4px}
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+  .uprow{display:flex;gap:8px}
+  .uprow input{flex:1}
+  .uprow .up{white-space:nowrap}
+  .thumb{max-height:120px;max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--line);display:block}
+  .cellimg{height:34px;width:34px;object-fit:cover;border-radius:6px;border:1px solid var(--line);vertical-align:middle}
+  .field .ro{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;
+       font-size:12px;word-break:break-all;white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;max-height:200px;overflow:auto}
+  .drawer .actions{display:flex;gap:8px;margin-top:18px;position:sticky;bottom:0;background:var(--panel);padding:12px 0}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);
+       padding:10px 16px;border-radius:8px;z-index:80;box-shadow:var(--shadow)}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<!-- 登录 -->
+<div id="login">
+  <div class="card">
+    <h1 id="loginTitle">OPC 老板后台</h1>
+    <div class="sub">登录管理你的经营数据</div>
+    <label>账号</label>
+    <input id="u" autocomplete="username" />
+    <label>密码</label>
+    <input id="p" type="password" autocomplete="current-password" />
+    <button id="loginBtn">登录</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- 主框架 -->
+<div id="app" class="hidden">
+  <aside>
+    <div class="brand"><span class="dot"></span><span id="brandName">后台</span></div>
+    <nav id="nav"></nav>
+    <a class="sidelink" href="/creator.html" title="主理人对话经营台（看数据/改价/发券）">💬 创客台 · 对话经营 →</a>
+    <div class="who"><span id="who"></span> · <a id="logout" href="#">退出</a></div>
+  </aside>
+  <main id="main"></main>
+</div>
+
+<div id="drawerHost"></div>
+<div id="toastHost"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const api = {
+  token: localStorage.getItem("opc_admin_token") || "",
+  async call(method, path, body){
+    const r = await fetch("/api/admin"+path, {
+      method, headers: {"Content-Type":"application/json", ...(this.token?{Authorization:"Bearer "+this.token}:{})},
+      body: body!==undefined ? JSON.stringify(body) : undefined,
+    });
+    if(r.status===401){ logout(); throw new Error("登录已过期"); }
+    const data = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(data.detail || ("HTTP "+r.status));
+    return data;
+  },
+  get(p){return this.call("GET",p)},
+  post(p,b){return this.call("POST",p,b)},
+  patch(p,b){return this.call("PATCH",p,b)},
+  del(p){return this.call("DELETE",p)},
+};
+
+let STATE = {entities:[], current:null, page:0, limit:50, q:""};
+
+function toast(msg){
+  const t=document.createElement("div"); t.className="toast"; t.textContent=msg;
+  $("#toastHost").appendChild(t); setTimeout(()=>t.remove(), 2200);
+}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function fmtVal(k,v){
+  if(v==null) return "";
+  if(/(_at)$/.test(k) && typeof v==="number" && v>1e8){ try{return new Date(v*1000).toLocaleString("zh-CN")}catch(e){} }
+  if(/amount_cents$/.test(k) && typeof v==="number") return "¥"+(v/100).toFixed(2);
+  if(typeof v==="object") return JSON.stringify(v);
+  return String(v);
+}
+function statusPill(v){
+  const cls=({paid:"paid",pending:"pending",refunded:"refunded",failed:"failed",settled:"paid",held:"pending"})[v]||"";
+  return `<span class="pill ${cls}">${esc(v)}</span>`;
+}
+
+/* ---------- 登录 ---------- */
+async function doLogin(){
+  $("#loginErr").textContent="";
+  try{
+    const d = await api.post("/login", {user:$("#u").value, password:$("#p").value});
+    api.token = d.token; localStorage.setItem("opc_admin_token", d.token);
+    if(d.app){ $("#loginTitle").textContent = d.app+" · 老板后台"; }
+    await boot();
+  }catch(e){ $("#loginErr").textContent = e.message; }
+}
+function logout(){
+  api.token=""; localStorage.removeItem("opc_admin_token");
+  $("#app").classList.add("hidden"); $("#login").classList.remove("hidden");
+}
+
+/* ---------- 启动 ---------- */
+async function boot(){
+  let me;
+  try{ me = await api.get("/me"); }catch(e){ logout(); return; }
+  $("#login").classList.add("hidden"); $("#app").classList.remove("hidden");
+  $("#brandName").textContent = me.app || "后台";
+  $("#who").textContent = me.user;
+  document.title = (me.app||"OPC")+" · 老板后台";
+  const r = await api.get("/entities");
+  STATE.entities = r.entities;
+  renderNav();
+  showOverview();
+}
+
+function renderNav(){
+  const nav = $("#nav");
+  let html = `<div class="item active" data-view="overview">📊 经营概览</div>`;
+  html += `<div class="group">数据管理</div>`;
+  for(const e of STATE.entities){
+    html += `<div class="item" data-view="entity" data-name="${e.name}">${esc(e.label)}</div>`;
+  }
+  nav.innerHTML = html;
+  nav.querySelectorAll(".item").forEach(el=>{
+    el.onclick = ()=>{
+      nav.querySelectorAll(".item").forEach(x=>x.classList.remove("active"));
+      el.classList.add("active");
+      if(el.dataset.view==="overview") showOverview();
+      else openEntity(el.dataset.name);
+    };
+  });
+}
+
+/* ---------- 概览 ---------- */
+async function showOverview(){
+  STATE.current=null;
+  const main=$("#main");
+  main.innerHTML = `<div class="head"><h2>经营概览</h2></div><div id="ov">加载中…</div>`;
+  let ov={}, ts={series:[]};
+  try{ [ov, ts] = await Promise.all([api.get("/overview"), api.get("/stats/timeseries?days=14")]); }
+  catch(e){ $("#ov").innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  $("#ov").innerHTML = renderOverview(ov) + renderChart(ts.series);
+}
+function renderOverview(ov){
+  const cards=[];
+  for(const [k,v] of Object.entries(ov)){
+    if(v && typeof v==="object" && !Array.isArray(v)){
+      const rows = Object.entries(v).map(([kk,vv])=>`<div>${esc(kk)}：<b>${esc(fmtVal(kk,vv))}</b></div>`).join("");
+      cards.push(`<div class="card"><div class="k">${esc(labelOf(k))}</div><div class="v small">${rows||"—"}</div></div>`);
+    }else if(Array.isArray(v)){
+      cards.push(`<div class="card"><div class="k">${esc(labelOf(k))}</div><div class="v small">${v.length} 条</div></div>`);
+    }else{
+      cards.push(`<div class="card"><div class="k">${esc(labelOf(k))}</div><div class="v">${esc(fmtVal(k,v))}</div></div>`);
+    }
+  }
+  return `<div class="cards">${cards.join("")}</div>`;
+}
+const LABELS={customers:"客户数",revenue_yuan:"营收(元)",credit_balance:"积分余额",works:"作品分布",
+  paid_orders:"付费订单",prices_yuan:"价目(元)",video_quota:"视频配额",recent_paid:"最近成交",
+  rewards_yuan:"返佣(元)",services:"服务分布"};
+function labelOf(k){return LABELS[k]||k}
+function renderChart(series){
+  if(!series||!series.length) return "";
+  const max = Math.max(1, ...series.map(s=>s.revenue));
+  const bars = series.map(s=>{
+    const h = Math.round((s.revenue/max)*140);
+    return `<div class="bar"><div class="col" style="height:${h}px" title="¥${s.revenue.toFixed(2)} / ${s.orders}单"></div>
+      <div class="lbl">${s.day.slice(5)}</div></div>`;
+  }).join("");
+  return `<div class="section-title">近 14 天营收（元）</div><div class="chart"><div class="bars">${bars}</div></div>`;
+}
+
+/* ---------- 实体表格 ---------- */
+function specOf(name){return STATE.entities.find(e=>e.name===name)}
+async function openEntity(name, page=0, q=""){
+  STATE.current=name; STATE.page=page; STATE.q=q;
+  const spec=specOf(name);
+  const main=$("#main");
+  const searchBox = (spec.search&&spec.search.length)
+    ? `<input id="q" placeholder="搜索 ${spec.search.join(" / ")}" value="${esc(q)}" />` : "";
+  const createBtn = (spec.creatable&&spec.creatable.length) ? `<button id="newBtn">+ 新建</button>` : "";
+  main.innerHTML = `<div class="head"><h2>${esc(spec.label)}</h2>
+      <div class="toolbar">${searchBox}${createBtn}</div></div>
+      <div id="list" class="empty">加载中…</div>`;
+  if($("#q")){ $("#q").onkeydown=e=>{ if(e.key==="Enter") openEntity(name,0,$("#q").value); }; }
+  if($("#newBtn")){ $("#newBtn").onclick=()=>openCreate(name); }
+  await loadRows();
+}
+async function loadRows(){
+  const name=STATE.current, spec=specOf(name);
+  let data;
+  try{ data = await api.get(`/${name}?q=${encodeURIComponent(STATE.q)}&limit=${STATE.limit}&offset=${STATE.page*STATE.limit}`); }
+  catch(e){ $("#list").innerHTML=`<div class="empty">${esc(e.message)}</div>`; return; }
+  const cols = spec.columns;
+  if(!data.rows.length){ $("#list").innerHTML=`<div class="empty">暂无数据</div>`; return; }
+  const head = cols.map(c=>`<th>${esc(c)}</th>`).join("");
+  const body = data.rows.map(r=>{
+    const tds = cols.map(c=>{
+      let cell;
+      if(c==="status") cell = statusPill(r[c]);
+      else if(isMediaField(c) && r[c] && /\.(jpg|jpeg|png|gif|webp)$/i.test(String(r[c]))) cell = `<img class="cellimg" src="${esc(r[c])}" onerror="this.replaceWith(document.createTextNode('—'))"/>`;
+      else cell = esc(fmtVal(c,r[c]));
+      return `<td title="${esc(fmtVal(c,r[c]))}">${cell}</td>`;
+    }).join("");
+    return `<tr data-id="${esc(r._id)}">${tds}</tr>`;
+  }).join("");
+  const pages = Math.ceil(data.total/STATE.limit)||1;
+  $("#list").classList.remove("empty");
+  $("#list").innerHTML = `<div class="tablewrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
+    <div class="pager">共 ${data.total} 条
+      <button class="ghost" id="prev" ${STATE.page<=0?"disabled":""}>上一页</button>
+      第 ${STATE.page+1}/${pages} 页
+      <button class="ghost" id="next" ${STATE.page+1>=pages?"disabled":""}>下一页</button></div>`;
+  $("#list").querySelectorAll("tbody tr").forEach(tr=>{
+    tr.onclick=()=>openDetail(name, tr.dataset.id, data.rows.find(x=>String(x._id)===tr.dataset.id));
+  });
+  if($("#prev")) $("#prev").onclick=()=>openEntity(name, STATE.page-1, STATE.q);
+  if($("#next")) $("#next").onclick=()=>openEntity(name, STATE.page+1, STATE.q);
+}
+
+/* ---------- 详情/编辑抽屉 ---------- */
+function closeDrawer(){ $("#drawerHost").innerHTML=""; }
+function isMediaField(k){ return /^(image_url|photo_url|audio_url|mv_url|proof_url|cover_url)$/.test(k) || /_url$/.test(k); }
+function editInput(k, val){
+  const v = val==null ? "" : val;
+  if(isMediaField(k)){
+    const prev = String(v) ? `<img class="thumb" src="${esc(v)}" onerror="this.style.display='none'"/>` : "";
+    return `<div class="uprow"><input data-k="${k}" value="${esc(v)}" placeholder="可填 URL 或点上传"/>`
+      + `<button type="button" class="ghost up" data-up="${k}">上传</button></div>${prev}`;
+  }
+  if(String(v).length>60) return `<textarea data-k="${k}">${esc(v)}</textarea>`;
+  return `<input data-k="${k}" value="${esc(v)}" />`;
+}
+function wireUploads(){
+  const d=$(".drawer"); if(!d) return;
+  d.querySelectorAll("button.up").forEach(btn=>{
+    btn.onclick=()=>{
+      const input=d.querySelector(`[data-k="${btn.dataset.up}"]`);
+      const f=document.createElement("input"); f.type="file"; f.accept="image/*,video/*";
+      f.onchange=async()=>{
+        const file=f.files[0]; if(!file) return;
+        const fd=new FormData(); fd.append("file", file); toast("上传中…");
+        try{
+          const r=await fetch("/api/admin/upload",{method:"POST",headers:{Authorization:"Bearer "+api.token},body:fd});
+          const data=await r.json(); if(!r.ok) throw new Error(data.detail||"上传失败");
+          input.value=data.url; toast("已上传");
+          let img=input.parentElement.parentElement.querySelector("img.thumb");
+          if(!img){ img=document.createElement("img"); img.className="thumb"; input.parentElement.after(img); }
+          img.src=data.url; img.style.display="";
+        }catch(e){ toast("上传失败："+e.message); }
+      };
+      f.click();
+    };
+  });
+}
+function openDetail(name, id, row){
+  const spec=specOf(name);
+  const fields = Object.keys(row).filter(k=>k!=="_id").map(k=>{
+    const editable = spec.editable.includes(k);
+    if(editable){
+      return `<div class="field"><label>${esc(k)} ✎</label>${editInput(k,row[k])}</div>`;
+    }
+    return `<div class="field"><label>${esc(k)}</label><div class="ro">${esc(fmtVal(k,row[k]))}</div></div>`;
+  }).join("");
+  const delBtn = spec.deletable ? `<button class="danger" id="delBtn">删除</button>` : "";
+  const saveBtn = spec.editable.length ? `<button id="saveBtn">保存修改</button>` : "";
+  $("#drawerHost").innerHTML = `<div class="drawer-bg"><div class="drawer">
+    <div class="head"><h2>${esc(spec.label)} 详情</h2><button class="ghost" id="closeBtn">关闭</button></div>
+    ${fields}
+    <div class="actions">${saveBtn}${delBtn}<span style="flex:1"></span></div>
+  </div></div>`;
+  $(".drawer-bg").onclick=e=>{ if(e.target===$(".drawer-bg")) closeDrawer(); };
+  $("#closeBtn").onclick=closeDrawer;
+  wireUploads();
+  if($("#saveBtn")) $("#saveBtn").onclick=async()=>{
+    const patch={};
+    $(".drawer").querySelectorAll("[data-k]").forEach(el=>{ patch[el.dataset.k]=el.value; });
+    try{ await api.patch(`/${name}/${id}`, patch); toast("已保存"); closeDrawer(); loadRows(); }
+    catch(e){ toast("保存失败："+e.message); }
+  };
+  if($("#delBtn")) $("#delBtn").onclick=async()=>{
+    if(!confirm("确认删除这条记录？此操作不可恢复")) return;
+    try{ await api.del(`/${name}/${id}`); toast("已删除"); closeDrawer(); loadRows(); }
+    catch(e){ toast("删除失败："+e.message); }
+  };
+}
+function openCreate(name){
+  const spec=specOf(name);
+  const fields = spec.creatable.map(k=>`<div class="field"><label>${esc(k)}</label>${editInput(k,'')}</div>`).join("");
+  $("#drawerHost").innerHTML = `<div class="drawer-bg"><div class="drawer">
+    <div class="head"><h2>新建 ${esc(spec.label)}</h2><button class="ghost" id="closeBtn">关闭</button></div>
+    ${fields}
+    <div class="actions"><button id="createBtn">创建</button><span style="flex:1"></span></div>
+  </div></div>`;
+  $(".drawer-bg").onclick=e=>{ if(e.target===$(".drawer-bg")) closeDrawer(); };
+  $("#closeBtn").onclick=closeDrawer;
+  wireUploads();
+  $("#createBtn").onclick=async()=>{
+    const body={};
+    $(".drawer").querySelectorAll("[data-k]").forEach(el=>{ if(el.value!=="") body[el.dataset.k]=el.value; });
+    try{ await api.post(`/${name}`, body); toast("已创建"); closeDrawer(); openEntity(name,0,""); }
+    catch(e){ toast("创建失败："+e.message); }
+  };
+}
+
+/* ---------- 事件 ---------- */
+$("#loginBtn").onclick=doLogin;
+$("#p").onkeydown=e=>{ if(e.key==="Enter") doLogin(); };
+$("#logout").onclick=e=>{ e.preventDefault(); logout(); };
+
+if(api.token) boot(); else { $("#login").classList.remove("hidden"); }
+</script>
+</body>
+</html>
