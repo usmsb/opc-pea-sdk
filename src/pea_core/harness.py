@@ -27,18 +27,34 @@ class TurnResult:
 
 
 def parse_action(raw: str) -> dict[str, Any]:
+    """从模型输出里取出**第一个**合法 action 对象（action=say|tool）。
+
+    真实大模型常在一轮里吐多个 JSON（如 {tool}\\n\\n{say}）或带前后文/```json 包裹——
+    旧写法取"首 { 到尾 }"整段会 json 解析失败→把原始 JSON 当 say 泄露、工具不执行。
+    这里用 raw_decode 从每个 { 处尝试解析单个对象，命中第一个 action 即返回（忽略后续），稳。
+    """
     s = (raw or "").strip()
     if s.startswith("```"):
         s = s.strip("`")
         s = s[4:] if s.startswith("json") else s
-    st, en = s.find("{"), s.rfind("}")
-    if st >= 0 and en > st:
+        s = s.strip()
+    dec = json.JSONDecoder()
+    i, n = 0, len(s)
+    while True:
+        st = s.find("{", i)
+        if st < 0:
+            break
         try:
-            obj = json.loads(s[st:en + 1])
-            if isinstance(obj, dict) and obj.get("action") in ("say", "tool"):
-                return obj
+            obj, end = dec.raw_decode(s, st)  # 解析 st 处的单个对象，忽略其后内容
         except json.JSONDecodeError:
-            pass
+            i = st + 1
+            continue
+        if isinstance(obj, dict) and obj.get("action") in ("say", "tool"):
+            return obj
+        i = end if end > st else st + 1
+    # 实在没有 action 对象：当作纯文本回复（但别把疑似 action 的裸 JSON 泄露给用户）
+    if s.startswith("{") and '"action"' in s:
+        return {"action": "say", "text": "我在的，您慢慢说～"}
     return {"action": "say", "text": s or "我在的，您慢慢说～"}
 
 
