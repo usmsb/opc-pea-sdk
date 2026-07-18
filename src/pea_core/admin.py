@@ -184,16 +184,40 @@ def core_entities(m: Any) -> dict[str, EntitySpec]:
     return ents
 
 
+def admin_secret_of(s: Any) -> str:
+    # admin_secret 未配则回退 jwt_secret（仍是 PEA 私有密钥，不影响安全）
+    return getattr(s, "admin_secret", "") or getattr(s, "jwt_secret", "") or "pea-admin-dev"
+
+
+def admin_ttl_of(s: Any) -> int:
+    return int(getattr(s, "admin_ttl_seconds", 86400))
+
+
+def make_admin_dependency(get_settings: Callable[[], Any]):
+    """返回 FastAPI 依赖：校验 Bearer 是否为有效管理员 token（与老板后台同一套登录）。
+
+    用于给创客台等"仅老板可用"的路由复用同一登录（老板登录一次，token 通吃后台+创客台）。
+    """
+    async def require_admin_token(request: Request) -> str:
+        s = get_settings()
+        auth = request.headers.get("Authorization", "")
+        token = auth[7:] if auth.startswith("Bearer ") else ""
+        u = verify_token(token, admin_secret_of(s))
+        if not u:
+            raise HTTPException(status_code=401, detail="需要登录")
+        return u
+    return require_admin_token
+
+
 def make_admin_router(*, entities: dict[str, EntitySpec], get_settings: Callable[[], Any],
                       get_db: Callable[..., Any], overview: Callable[..., Any]) -> APIRouter:
     router = APIRouter(prefix="/api/admin", tags=["admin"])
 
     def _secret(s: Any) -> str:
-        # admin_secret 未配则回退 jwt_secret（仍是 PEA 私有密钥，不影响安全）
-        return getattr(s, "admin_secret", "") or getattr(s, "jwt_secret", "") or "pea-admin-dev"
+        return admin_secret_of(s)
 
     def _ttl(s: Any) -> int:
-        return int(getattr(s, "admin_ttl_seconds", 86400))
+        return admin_ttl_of(s)
 
     async def require_admin(request: Request) -> str:
         s = get_settings()

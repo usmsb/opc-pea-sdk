@@ -6,7 +6,8 @@
 from __future__ import annotations
 
 from . import context
-from .admin import EntitySpec, core_entities, make_admin_router, make_token, spec_for, verify_token
+from .admin import (EntitySpec, core_entities, make_admin_dependency, make_admin_router,
+                    make_token, spec_for, verify_token)
 from .embeddings import DIM, EmbeddingProvider, MiniMaxEmbedding, SandboxEmbedding, cosine
 from .harness import BaseHarness, TurnResult, parse_action
 from .memory import ChunkStore, RollingSummary, VectorMemory
@@ -16,5 +17,6 @@ __all__ = [
     "VectorMemory", "RollingSummary", "ChunkStore",
     "EmbeddingProvider", "SandboxEmbedding", "MiniMaxEmbedding", "cosine", "DIM",
     "context",
-    "make_admin_router", "core_entities", "spec_for", "EntitySpec", "make_token", "verify_token",
+    "make_admin_router", "make_admin_dependency", "core_entities", "spec_for", "EntitySpec",
+    "make_token", "verify_token",
 ]
