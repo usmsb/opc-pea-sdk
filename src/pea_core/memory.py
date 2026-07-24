@@ -44,6 +44,9 @@ class VectorMemory:
         rows = await self.store.all_for(customer_id)
         if not rows:
             return []
+        release = getattr(self.store, "release_transaction", None)
+        if callable(release):
+            await release()
         try:
             qv = (await self.embedder.embed([query[:2000]], kind="query"))[0]
         except Exception:

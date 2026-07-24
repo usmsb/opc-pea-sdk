@@ -3,7 +3,7 @@
 Reusable SDK and reference templates for OPC Personal Economic Agents (PEA).
 
 This repository is generated from `usmsb/opc-platform`; the platform repository
-is the canonical source of truth. Source ref: `64b9920417a7199cd6be42721e537e0f653b655e`.
+is the canonical source of truth. Source ref: `04fc7754a28b9da4cb6aec8af32d6f4479deed2f`.
 
 ## Install
 

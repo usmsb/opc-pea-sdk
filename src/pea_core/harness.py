@@ -101,6 +101,10 @@ class BaseHarness(abc.ABC):
     @abc.abstractmethod
     async def set_summary(self, conv: Any, summary: str) -> None: ...
 
+    @abc.abstractmethod
+    async def checkpoint(self) -> None:
+        """Durably finish the current short transaction before external I/O."""
+
     # ---- 核心逻辑（共享）----
     async def _assemble(self, customer: Any, conv: Any, query: str) -> list[dict[str, str]]:
         rows = await self.load_history(conv)
@@ -108,40 +112,58 @@ class BaseHarness(abc.ABC):
         recent, overflow = ctxmod.split_window(clean, WINDOW)
         summary = await self.get_summary(conv)
         if overflow:
+            await self.checkpoint()
             summary = await RollingSummary.update(self.chat, summary, overflow)
             await self.set_summary(conv, summary)
+            await self.checkpoint()
         recalls = await self.vmem.recall(customer.id, query, k=RAG_K)
         state = await self.compute_state(customer, conv)
         return ctxmod.build(self.system_prompt, summary, recalls, recent, state.get("memory", {}), state)
 
     async def run_turn(self, customer: Any, conv: Any, user_text: str) -> TurnResult:
         await self.save_message(conv, "user", user_text)
+        await self.checkpoint()
         await self.vmem.remember(customer.id, "user", user_text)
+        await self.checkpoint()
         steps: list[dict[str, Any]] = []
         reply = ""
         for _ in range(MAX_STEPS):
             msgs = await self._assemble(customer, conv, user_text)
+            # compute_state/history reads and any summary writes must be closed
+            # before waiting on a provider. SQLite has one writer, and a WAL
+            # reader should not pin a checkpoint for the duration of an LLM call.
+            await self.checkpoint()
             raw = await self.chat.complete(msgs)
             action = parse_action(raw)
             if action.get("action") == "say":
                 reply = str(action.get("text", "")).strip()
                 await self.save_message(conv, "assistant", reply)
+                await self.checkpoint()
                 await self.vmem.remember(customer.id, "assistant", reply)
+                await self.checkpoint()
                 break
             name = str(action.get("name", ""))
             args = action.get("args") or {}
             if not self.known_tool(name):
                 reply = "（内部）未知工具，已跳过。"
                 await self.save_message(conv, "assistant", reply)
+                await self.checkpoint()
                 break
+            await self.checkpoint()
             result = await self.dispatch(name, self.make_ctx(customer, conv), args)
+            # Tool implementations may write. Never carry those writes into the
+            # next LLM decision round.
+            await self.checkpoint()
             await self.save_message(conv, "tool", "", tool_name=name,
                                     tool_payload=json.dumps(result, ensure_ascii=False))
+            await self.checkpoint()
             steps.append({"tool": name, "args": args, "result": result})
         else:
             reply = "（已尽力，稍后再为您继续）"
             await self.save_message(conv, "assistant", reply)
+            await self.checkpoint()
         state = await self.compute_state(customer, conv)
+        await self.checkpoint()
         return TurnResult(reply=reply, steps=steps, state=state)
 
     async def generate(self, customer: Any, conv: Any, system: str, ask: str,
@@ -160,10 +182,12 @@ class BaseHarness(abc.ABC):
         msgs.extend(recent)
         msgs.append({"role": "user", "content": ask or f"请生成「{title}」。"})
         try:
+            await self.checkpoint()
             body = await self.chat.complete(msgs, temperature=temperature, max_tokens=max_tokens)
         except Exception:
             body = ""
         body = (body or "").strip()
         if body and not body.startswith("{"):
             await self.vmem.remember(customer.id, kind, f"{title}\n{body}", ref=kind)
+            await self.checkpoint()
         return body
