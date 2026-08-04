@@ -10,10 +10,12 @@ from .admin import (EntitySpec, core_entities, make_admin_dependency, make_admin
                     make_token, spec_for, verify_token)
 from .embeddings import DIM, EmbeddingProvider, MiniMaxEmbedding, SandboxEmbedding, cosine
 from .harness import BaseHarness, TurnResult, parse_action
+from .complex_task_harness import COMPLEX_TASK_HARNESS_SCHEMA
 from .memory import ChunkStore, RollingSummary, VectorMemory
 
 __all__ = [
     "BaseHarness", "TurnResult", "parse_action",
+    "COMPLEX_TASK_HARNESS_SCHEMA",
     "VectorMemory", "RollingSummary", "ChunkStore",
     "EmbeddingProvider", "SandboxEmbedding", "MiniMaxEmbedding", "cosine", "DIM",
     "context",

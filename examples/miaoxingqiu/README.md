@@ -22,15 +22,15 @@
 
 ```bash
 cd peas/miaoxingqiu
-python3.12 -m uvicorn app.main:app --port 8097   # → http://127.0.0.1:8097
+python3.14 -m uvicorn app.main:app --port 8097   # → http://127.0.0.1:8097
 ```
 
 ## 测试
 
 ```bash
-python3.12 -m pytest          # 漏斗/护栏/积分/改价/二级分佣/晒图返现/鉴权/A2A托管（18 passed）
-python3.12 tests/run_e2e.py   # 离线全漏斗 trace + 断言（好物+服务+纪念+纪念曲+返现）
-python3.12 tests/run_http.py  # HTTP 全漏斗 + 鉴权 + /a2a/ledger
+python3.14 -m pytest          # 漏斗/护栏/积分/改价/二级分佣/晒图返现/鉴权/A2A托管（18 passed）
+python3.14 tests/run_e2e.py   # 离线全漏斗 trace + 断言（好物+服务+纪念+纪念曲+返现）
+python3.14 tests/run_http.py  # HTTP 全漏斗 + 鉴权 + /a2a/ledger
 ```
 
 > A2A 托管结算接中枢：配 `MXQ_OPC_CENTRAL_URL` + `MXQ_OPC_CENTRAL_TOKEN` 走真中枢；不配即本地积分托管沙箱。

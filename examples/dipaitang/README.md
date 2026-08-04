@@ -18,15 +18,15 @@
 
 ```bash
 cd peas/dipaitang
-python3.12 -m uvicorn app.main:app --port 8098   # → http://127.0.0.1:8098
+python3.14 -m uvicorn app.main:app --port 8098   # → http://127.0.0.1:8098
 ```
 
 ## 测试
 
 ```bash
-python3.12 -m pytest            # 漏斗/护栏/积分/改价/鉴权/裂变/A2A托管结算（16 passed）
-python3.12 tests/run_e2e.py     # 离线全漏斗 trace + 断言
-python3.12 tests/run_http.py    # HTTP 全漏斗 + 鉴权 + /a2a/ledger
+python3.14 -m pytest            # 漏斗/护栏/积分/改价/鉴权/裂变/A2A托管结算（16 passed）
+python3.14 tests/run_e2e.py     # 离线全漏斗 trace + 断言
+python3.14 tests/run_http.py    # HTTP 全漏斗 + 鉴权 + /a2a/ledger
 ```
 
 > A2A 托管结算接中枢：配 `DPT_OPC_CENTRAL_URL` + `DPT_OPC_CENTRAL_TOKEN` 走真中枢（`POST /api/agents/auto-execute` + 轮询 `/auto-executions/{id}`）；不配即本地积分托管沙箱，全程可跑可测。

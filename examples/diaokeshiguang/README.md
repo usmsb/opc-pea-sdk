@@ -25,7 +25,7 @@
 
 ```bash
 cd peas/diaokeshiguang
-pip install -r requirements.txt        # 或用已装好的 python3.12
+pip install -r requirements.txt        # 或用已装好的 python3.14
 ./run.sh                               # → http://127.0.0.1:8099 (C端) ／ /creator.html (创客台)
 ```
 
@@ -35,9 +35,9 @@ pip install -r requirements.txt        # 或用已装好的 python3.12
 ## 测试
 
 ```bash
-python3.12 -m pytest                   # 单测：漏斗 + 护栏 + 积分 + 改价
-python3.12 -m tests.run_e2e            # 离线全漏斗 trace + 断言
-python3.12 -m tests.run_http           # 对运行中的服务跑 HTTP 全漏斗 + 断言
+python3.14 -m pytest                   # 单测：漏斗 + 护栏 + 积分 + 改价
+python3.14 -m tests.run_e2e            # 离线全漏斗 trace + 断言
+python3.14 -m tests.run_http           # 对运行中的服务跑 HTTP 全漏斗 + 断言
 ```
 
 ## 转生产（接真实凭证）

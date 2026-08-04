@@ -11,6 +11,14 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+try:
+    # The full Agent image exposes the canonical implementation.
+    from agents.complex_task_harness import ComplexTaskSession, HarnessObjective
+except ModuleNotFoundError:  # pragma: no cover - exercised in the slim PEA image
+    # PEA images copy only pea_core; the package-local mirror preserves the
+    # exact public projection without adding the Agent runtime dependency.
+    from .complex_task_harness import ComplexTaskSession, HarnessObjective
+
 from . import context as ctxmod
 from .memory import RollingSummary, VectorMemory
 
@@ -24,6 +32,7 @@ class TurnResult:
     reply: str
     steps: list[dict[str, Any]] = field(default_factory=list)
     state: dict[str, Any] = field(default_factory=dict)
+    harness: dict[str, Any] = field(default_factory=dict)
 
 
 def parse_action(raw: str) -> dict[str, Any]:
@@ -121,6 +130,20 @@ class BaseHarness(abc.ABC):
         return ctxmod.build(self.system_prompt, summary, recalls, recent, state.get("memory", {}), state)
 
     async def run_turn(self, customer: Any, conv: Any, user_text: str) -> TurnResult:
+        # PEA conversations are complex tasks by default.  The common session
+        # provides the same objective/context/artifact/checkpoint contract as
+        # A2A Agents while keeping PEA-specific tools and memory local.
+        harness_session = ComplexTaskSession(
+            HarnessObjective(
+                goal=user_text,
+                success_evidence=("respond to the user's request",),
+                stop_conditions=("human approval or tool safety gate required",),
+                side_effect_class="read_only",
+                max_rounds=1,
+            ),
+            run_id=f"pea_{getattr(conv, 'id', None) or id(conv)}",
+        )
+        harness_session.add_context("user_request", user_text, kind="objective", priority=100, authoritative=True)
         await self.save_message(conv, "user", user_text)
         await self.checkpoint()
         await self.vmem.remember(customer.id, "user", user_text)
@@ -128,6 +151,7 @@ class BaseHarness(abc.ABC):
         steps: list[dict[str, Any]] = []
         reply = ""
         for _ in range(MAX_STEPS):
+            harness_session.begin_round(reason="tool_or_reply_decision")
             msgs = await self._assemble(customer, conv, user_text)
             # compute_state/history reads and any summary writes must be closed
             # before waiting on a provider. SQLite has one writer, and a WAL
@@ -137,6 +161,8 @@ class BaseHarness(abc.ABC):
             action = parse_action(raw)
             if action.get("action") == "say":
                 reply = str(action.get("text", "")).strip()
+                harness_session.record_artifact(reply, artifact_type="pea_reply", source=self.__class__.__name__)
+                harness_session.mark_provider("terminal", terminal=True)
                 await self.save_message(conv, "assistant", reply)
                 await self.checkpoint()
                 await self.vmem.remember(customer.id, "assistant", reply)
@@ -151,6 +177,13 @@ class BaseHarness(abc.ABC):
                 break
             await self.checkpoint()
             result = await self.dispatch(name, self.make_ctx(customer, conv), args)
+            harness_session.add_context(
+                f"tool-{len(steps)}",
+                f"tool={name} result={json.dumps(result, ensure_ascii=False)[:8_000]}",
+                kind="tool_observation",
+                priority=70,
+                authoritative=True,
+            )
             # Tool implementations may write. Never carry those writes into the
             # next LLM decision round.
             await self.checkpoint()
@@ -160,11 +193,16 @@ class BaseHarness(abc.ABC):
             steps.append({"tool": name, "args": args, "result": result})
         else:
             reply = "（已尽力，稍后再为您继续）"
+            harness_session.fail_closed("PEA bounded tool loop exhausted", provider_status="loop_exhausted")
             await self.save_message(conv, "assistant", reply)
             await self.checkpoint()
         state = await self.compute_state(customer, conv)
+        if harness_session.checkpoint.status == "running":
+            harness_session.complete()
+        harness_projection = harness_session.to_projection()
+        state = {**state, "harness": harness_projection}
         await self.checkpoint()
-        return TurnResult(reply=reply, steps=steps, state=state)
+        return TurnResult(reply=reply, steps=steps, state=state, harness=harness_projection)
 
     async def generate(self, customer: Any, conv: Any, system: str, ask: str,
                        kind: str, title: str, temperature: float = 0.6, max_tokens: int = 2000) -> str:
