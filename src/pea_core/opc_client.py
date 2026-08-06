@@ -73,14 +73,13 @@ async def attest_runtime(*, deployment_revision: str | None = None,
 class CentralChat(_CentralHTTP):
     sandbox = False
 
-    async def complete(self, messages: list[dict[str, Any]], *, temperature: float = 0.7,
+    async def complete(self, messages: list[dict[str, Any]], *,
                        max_tokens: int = 1600, **kwargs: Any) -> str:
         idempotency_key = str(kwargs.get("idempotency_key") or f"pea-chat-{uuid.uuid4()}")
         response = await self._post(
             "/api/internal/pea/v1/llm/chat",
             {
                 "messages": messages,
-                "temperature": temperature,
                 "max_tokens": max_tokens,
                 "trace_id": kwargs.get("trace_id") or str(uuid.uuid4()),
                 "task_scope_id": kwargs.get("task_scope_id"),

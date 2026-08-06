@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import abc
 import json
+import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -20,6 +21,8 @@ except ModuleNotFoundError:  # pragma: no cover - exercised in the slim PEA imag
     from .complex_task_harness import ComplexTaskSession, HarnessObjective
 
 from . import context as ctxmod
+from .context_manifest import build_manifest
+from .interaction import INTERACTION_ACTIONS, interaction_from_action, interaction_from_payload
 from .memory import RollingSummary, VectorMemory
 
 WINDOW = 12       # 近窗口保留消息数
@@ -33,6 +36,9 @@ class TurnResult:
     steps: list[dict[str, Any]] = field(default_factory=list)
     state: dict[str, Any] = field(default_factory=dict)
     harness: dict[str, Any] = field(default_factory=dict)
+    turn_id: str = field(default_factory=lambda: f"turn_{uuid.uuid4().hex}")
+    pending_interactions: list[dict[str, Any]] = field(default_factory=list)
+    context_manifest: dict[str, Any] = field(default_factory=dict)
 
 
 def parse_action(raw: str) -> dict[str, Any]:
@@ -58,7 +64,7 @@ def parse_action(raw: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             i = st + 1
             continue
-        if isinstance(obj, dict) and obj.get("action") in ("say", "tool"):
+        if isinstance(obj, dict) and obj.get("action") in ({"say", "tool"} | INTERACTION_ACTIONS):
             return obj
         i = end if end > st else st + 1
     # 实在没有 action 对象：当作纯文本回复（但别把疑似 action 的裸 JSON 泄露给用户）
@@ -127,9 +133,17 @@ class BaseHarness(abc.ABC):
             await self.checkpoint()
         recalls = await self.vmem.recall(customer.id, query, k=RAG_K)
         state = await self.compute_state(customer, conv)
+        self._last_context_manifest = build_manifest(
+            goal=query,
+            summary=summary,
+            recent=recent,
+            recalls=recalls,
+            state=state,
+        ).to_dict()
         return ctxmod.build(self.system_prompt, summary, recalls, recent, state.get("memory", {}), state)
 
-    async def run_turn(self, customer: Any, conv: Any, user_text: str) -> TurnResult:
+    async def run_turn(self, customer: Any, conv: Any, user_text: str,
+                       run_id: str | None = None) -> TurnResult:
         # PEA conversations are complex tasks by default.  The common session
         # provides the same objective/context/artifact/checkpoint contract as
         # A2A Agents while keeping PEA-specific tools and memory local.
@@ -141,7 +155,7 @@ class BaseHarness(abc.ABC):
                 side_effect_class="read_only",
                 max_rounds=1,
             ),
-            run_id=f"pea_{getattr(conv, 'id', None) or id(conv)}",
+            run_id=run_id or f"pea_{getattr(conv, 'id', None) or id(conv)}",
         )
         harness_session.add_context("user_request", user_text, kind="objective", priority=100, authoritative=True)
         await self.save_message(conv, "user", user_text)
@@ -149,6 +163,8 @@ class BaseHarness(abc.ABC):
         await self.vmem.remember(customer.id, "user", user_text)
         await self.checkpoint()
         steps: list[dict[str, Any]] = []
+        pending_interactions: list[dict[str, Any]] = []
+        turn_id = f"turn_{uuid.uuid4().hex}"
         reply = ""
         for _ in range(MAX_STEPS):
             harness_session.begin_round(reason="tool_or_reply_decision")
@@ -159,6 +175,17 @@ class BaseHarness(abc.ABC):
             await self.checkpoint()
             raw = await self.chat.complete(msgs)
             action = parse_action(raw)
+            if action.get("action") in INTERACTION_ACTIONS:
+                interaction = interaction_from_action(action, run_id or f"run_local_{conv.id}")
+                if interaction is None:
+                    reply = "我需要你的确认，但这次交互信息不完整，请重新说一下你的目标。"
+                else:
+                    pending_interactions.append(interaction.to_dict())
+                    reply = str(action.get("text") or action.get("message") or interaction.description).strip()
+                    reply = reply or interaction.title
+                await self.save_message(conv, "assistant", reply)
+                await self.checkpoint()
+                break
             if action.get("action") == "say":
                 reply = str(action.get("text", "")).strip()
                 harness_session.record_artifact(reply, artifact_type="pea_reply", source=self.__class__.__name__)
@@ -191,6 +218,13 @@ class BaseHarness(abc.ABC):
                                     tool_payload=json.dumps(result, ensure_ascii=False))
             await self.checkpoint()
             steps.append({"tool": name, "args": args, "result": result})
+            interaction = interaction_from_payload(result, run_id or f"run_local_{conv.id}")
+            if interaction is not None:
+                pending_interactions.append(interaction.to_dict())
+                reply = str(result.get("message") or interaction.description or interaction.title).strip()
+                await self.save_message(conv, "assistant", reply)
+                await self.checkpoint()
+                break
         else:
             reply = "（已尽力，稍后再为您继续）"
             harness_session.fail_closed("PEA bounded tool loop exhausted", provider_status="loop_exhausted")
@@ -202,7 +236,9 @@ class BaseHarness(abc.ABC):
         harness_projection = harness_session.to_projection()
         state = {**state, "harness": harness_projection}
         await self.checkpoint()
-        return TurnResult(reply=reply, steps=steps, state=state, harness=harness_projection)
+        return TurnResult(reply=reply, steps=steps, state=state, harness=harness_projection,
+                          turn_id=turn_id, pending_interactions=pending_interactions,
+                          context_manifest=getattr(self, "_last_context_manifest", {}))
 
     async def generate(self, customer: Any, conv: Any, system: str, ask: str,
                        kind: str, title: str, temperature: float = 0.6, max_tokens: int = 2000) -> str:

@@ -11,12 +11,16 @@ from .admin import (EntitySpec, core_entities, make_admin_dependency, make_admin
 from .embeddings import DIM, EmbeddingProvider, MiniMaxEmbedding, SandboxEmbedding, cosine
 from .opc_client import CentralChat, CentralEmbedding, CentralLyrics, CentralMusic, attest_runtime, central_runtime_enabled
 from .harness import BaseHarness, TurnResult, parse_action
+from .context_manifest import ContextManifest, ContextSource, build_manifest
 from .complex_task_harness import COMPLEX_TASK_HARNESS_SCHEMA
+from .interaction import GoalContract, InteractionRequest, TaskEnvelope
 from .memory import ChunkStore, RollingSummary, VectorMemory
 
 __all__ = [
     "BaseHarness", "TurnResult", "parse_action",
     "COMPLEX_TASK_HARNESS_SCHEMA",
+    "GoalContract", "InteractionRequest", "TaskEnvelope",
+    "ContextManifest", "ContextSource", "build_manifest",
     "VectorMemory", "RollingSummary", "ChunkStore",
     "EmbeddingProvider", "SandboxEmbedding", "MiniMaxEmbedding", "cosine", "DIM",
     "CentralChat", "CentralEmbedding", "CentralLyrics", "CentralMusic", "attest_runtime", "central_runtime_enabled",
