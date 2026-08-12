@@ -16,6 +16,13 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any, Mapping
 
+from .quality_contract import (
+    QUALITY_CONTRACT_ID,
+    QUALITY_CONTRACT_VERSION,
+    quality_contract_binding,
+    quality_contract_manifest,
+)
+
 
 COMPLEX_TASK_HARNESS_SCHEMA = "opc.complex_task_harness.v1"
 
@@ -32,8 +39,21 @@ class HarnessObjective:
     side_effect_class: str = "read_only"
     max_rounds: int = 3
     context_budget_chars: int = 240_000
+    quality_contract_id: str = QUALITY_CONTRACT_ID
+    quality_contract_version: str = ""
+    quality_contract_fingerprint: str = ""
 
     def normalized(self) -> "HarnessObjective":
+        manifest = quality_contract_manifest()
+        requested_id = _text(self.quality_contract_id, 160) or QUALITY_CONTRACT_ID
+        requested_version = _text(self.quality_contract_version, 160)
+        requested_fingerprint = _text(self.quality_contract_fingerprint, 128)
+        if requested_id != QUALITY_CONTRACT_ID:
+            raise ValueError(f"unsupported PEA quality contract: {requested_id!r}")
+        if requested_version and requested_version != QUALITY_CONTRACT_VERSION:
+            raise ValueError("PEA quality contract version mismatch")
+        if requested_fingerprint and requested_fingerprint != manifest["contract_fingerprint"]:
+            raise ValueError("PEA quality contract fingerprint mismatch")
         return HarnessObjective(
             goal=_text(self.goal, 8_000),
             success_evidence=tuple(_text(item, 2_000) for item in self.success_evidence if _text(item, 2_000)),
@@ -41,6 +61,9 @@ class HarnessObjective:
             side_effect_class=_text(self.side_effect_class, 80).lower() or "read_only",
             max_rounds=max(1, min(8, int(self.max_rounds or 3))),
             context_budget_chars=max(8_000, min(1_000_000, int(self.context_budget_chars or 240_000))),
+            quality_contract_id=QUALITY_CONTRACT_ID,
+            quality_contract_version=QUALITY_CONTRACT_VERSION,
+            quality_contract_fingerprint=str(manifest["contract_fingerprint"]),
         )
 
 
@@ -126,10 +149,87 @@ class ComplexTaskSession:
             "content_sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
             "source": _text(source, 160),
             "round_index": self.checkpoint.round_index,
+            "quality_contract": quality_contract_binding("generator"),
         }
         self.checkpoint.current_artifact = ref
         self.add_context(ref["artifact_id"], f"artifact_ref={ref['artifact_id']} sha256={ref['content_sha256']}", kind="artifact_ref", priority=100, authoritative=True)
         return ref
+
+    def record_review(self, review: Mapping[str, Any] | None) -> list[HarnessIssue]:
+        """Record a domain quality tool result in the shared issue ledger."""
+
+        if not isinstance(review, Mapping):
+            return []
+        binding = review.get("quality_contract")
+        if isinstance(binding, Mapping):
+            expected = quality_contract_binding("reviewer")
+            actual_tuple = (
+                binding.get("contract_id"),
+                binding.get("contract_version"),
+                binding.get("contract_fingerprint"),
+            )
+            expected_tuple = (
+                expected.get("contract_id"),
+                expected.get("contract_version"),
+                expected.get("contract_fingerprint"),
+            )
+            if actual_tuple != expected_tuple:
+                raise ValueError("PEA reviewer quality contract mismatch")
+        raw_issues = review.get("issues") if isinstance(review.get("issues"), list) else []
+        if review.get("pass") is False and not raw_issues:
+            raw_issues = [review.get("reason") or "PEA quality gate did not pass"]
+        current: list[HarnessIssue] = []
+        current_fingerprints: set[str] = set()
+        for raw in raw_issues:
+            message = _text(
+                raw.get("message") or raw.get("issue") or raw.get("description")
+                if isinstance(raw, Mapping)
+                else raw,
+                2_000,
+            )
+            if not message:
+                continue
+            fingerprint = hashlib.sha256(message.lower().encode("utf-8")).hexdigest()[:24]
+            current_fingerprints.add(fingerprint)
+            existing = next(
+                (item for item in self.checkpoint.issue_ledger if item.fingerprint == fingerprint),
+                None,
+            )
+            if existing is None:
+                existing = HarnessIssue(
+                    issue_id=f"issue_{fingerprint}",
+                    fingerprint=fingerprint,
+                    category="quality",
+                    severity="blocker" if review.get("pass") is False else "warning",
+                    message=message,
+                    first_seen_round=self.checkpoint.round_index,
+                    last_seen_round=self.checkpoint.round_index,
+                )
+                self.checkpoint.issue_ledger.append(existing)
+            else:
+                existing.last_seen_round = self.checkpoint.round_index
+                existing.status = "open"
+            current.append(existing)
+        for issue in self.checkpoint.issue_ledger:
+            if issue.status == "open" and issue.fingerprint not in current_fingerprints:
+                issue.status = "resolved"
+        if current:
+            self.add_context(
+                f"quality-review-{self.checkpoint.round_index}",
+                "; ".join(issue.message for issue in current),
+                kind="issue",
+                priority=100,
+                authoritative=True,
+            )
+        return current
+
+    def open_issues(self) -> list[HarnessIssue]:
+        return [item for item in self.checkpoint.issue_ledger if item.status == "open"]
+
+    def quality_blocked(self, reason: str = "open quality issues remain") -> None:
+        self.checkpoint.status = "quality_blocked"
+        self.checkpoint.pending_action = "remediate_open_issues"
+        self.checkpoint.last_error = _text(reason, 2_000)
 
     def begin_round(self, *, reason: str = "continue") -> None:
         self.checkpoint.round_index += 1
@@ -173,4 +273,3 @@ class ComplexTaskSession:
             "last_error": self.checkpoint.last_error,
             "updated_at": self.checkpoint.updated_at,
         }
-

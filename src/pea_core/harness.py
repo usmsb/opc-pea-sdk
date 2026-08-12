@@ -24,6 +24,7 @@ from . import context as ctxmod
 from .context_manifest import build_manifest
 from .interaction import INTERACTION_ACTIONS, interaction_from_action, interaction_from_payload
 from .memory import RollingSummary, VectorMemory
+from .quality_contract import render_quality_contract
 
 WINDOW = 12       # 近窗口保留消息数
 RAG_K = 4         # 每轮 RAG 召回条数
@@ -71,6 +72,46 @@ def parse_action(raw: str) -> dict[str, Any]:
     if s.startswith("{") and '"action"' in s:
         return {"action": "say", "text": "我在的，您慢慢说～"}
     return {"action": "say", "text": s or "我在的，您慢慢说～"}
+
+
+def _action_object(raw: str) -> dict[str, Any] | None:
+    """Return a real action object without converting prose into ``say``."""
+
+    parsed = parse_action(raw)
+    source = str(raw or "").strip()
+    if parsed.get("action") == "say" and parsed.get("text") == source:
+        return None
+    if (
+        parsed.get("action") == "say"
+        and source.startswith("{")
+        and '"action"' in source
+        and parsed.get("text") == "我在的，您慢慢说～"
+    ):
+        return None
+    return parsed
+
+
+def _artifact_first_domain_prompt(prompt: str) -> str:
+    """Remove legacy JSON transport directives from a PEA domain prompt."""
+
+    lines: list[str] = []
+    for line in str(prompt or "").splitlines():
+        if '{"action"' in line:
+            continue
+        if "输出格式" in line:
+            lines.append("# 下一步决策 Artifact")
+            continue
+        lines.append(line.replace("JSON action", "下一步决策 Artifact"))
+    lines.extend(
+        [
+            "",
+            "请输出一份简短、完整的自然语言下一步决策 Artifact，不输出 JSON。",
+            "必须写清 decision_type（say/tool/needs_input/needs_authorization）、给用户的话；",
+            "需要工具时还要写清准确 tool_name 和每个参数。一步只决定一件事。",
+            "Harness 会在下一次独立 LLM 调用中把这份 Artifact 投影成机器 action。",
+        ]
+    )
+    return "\n".join(lines)
 
 
 class BaseHarness(abc.ABC):
@@ -140,7 +181,14 @@ class BaseHarness(abc.ABC):
             recalls=recalls,
             state=state,
         ).to_dict()
-        return ctxmod.build(self.system_prompt, summary, recalls, recent, state.get("memory", {}), state)
+        producer_prompt = "\n\n".join(
+            (
+                render_quality_contract(role="generator"),
+                "【PEA 领域与工具合同】",
+                _artifact_first_domain_prompt(self.system_prompt),
+            )
+        )
+        return ctxmod.build(producer_prompt, summary, recalls, recent, state.get("memory", {}), state)
 
     async def run_turn(self, customer: Any, conv: Any, user_text: str,
                        run_id: str | None = None) -> TurnResult:
@@ -174,7 +222,57 @@ class BaseHarness(abc.ABC):
             # reader should not pin a checkpoint for the duration of an LLM call.
             await self.checkpoint()
             raw = await self.chat.complete(msgs)
-            action = parse_action(raw)
+            action = _action_object(raw)
+            if action is None:
+                # Semantic planning and JSON transport are separate model
+                # calls.  The formatter receives only the completed decision
+                # Artifact, never the original conversation/RAG context.
+                projection_messages = [
+                    {
+                        "role": "system",
+                        "content": "\n\n".join(
+                            (
+                                render_quality_contract(role="projection"),
+                                "只把附加的下一步决策 Artifact 投影为一个小型 action JSON。",
+                                "允许 action=say|tool|needs_input|needs_authorization。",
+                                "say 使用 text；tool 使用 name 和 args；交互动作保留 text/message/interaction。",
+                                "不重新决策、不新增工具、参数、事实或授权。只输出一个 JSON object。",
+                            )
+                        ),
+                    },
+                    {"role": "user", "content": raw},
+                ]
+                try:
+                    projected_raw = await self.chat.complete(
+                        projection_messages,
+                        temperature=0,
+                        max_tokens=2_000,
+                    )
+                    action = _action_object(projected_raw)
+                    if action is None and str(projected_raw or "").strip():
+                        repaired_raw = await self.chat.complete(
+                            [
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        "只修复附加 action 投影的 JSON 语法，保留所有可恢复字段和值；"
+                                        "不得读取对话、重新决策或新增工具参数。只输出一个 JSON object。"
+                                    ),
+                                },
+                                {"role": "user", "content": projected_raw},
+                            ],
+                            temperature=0,
+                            max_tokens=2_000,
+                        )
+                        action = _action_object(repaired_raw)
+                except Exception:
+                    action = None
+            if action is None:
+                reply = "这一步的执行决策没有形成可用动作，我已安全停止；请再说一次你当前最想完成的事。"
+                harness_session.quality_blocked("PEA action projection did not converge")
+                await self.save_message(conv, "assistant", reply)
+                await self.checkpoint()
+                break
             if action.get("action") in INTERACTION_ACTIONS:
                 interaction = interaction_from_action(action, run_id or f"run_local_{conv.id}")
                 if interaction is None:
@@ -190,6 +288,10 @@ class BaseHarness(abc.ABC):
                 reply = str(action.get("text", "")).strip()
                 harness_session.record_artifact(reply, artifact_type="pea_reply", source=self.__class__.__name__)
                 harness_session.mark_provider("terminal", terminal=True)
+                if harness_session.open_issues():
+                    harness_session.quality_blocked(
+                        "PEA attempted to finish while domain quality blockers remain"
+                    )
                 await self.save_message(conv, "assistant", reply)
                 await self.checkpoint()
                 await self.vmem.remember(customer.id, "assistant", reply)
@@ -204,6 +306,12 @@ class BaseHarness(abc.ABC):
                 break
             await self.checkpoint()
             result = await self.dispatch(name, self.make_ctx(customer, conv), args)
+            if name == "质检" or (
+                isinstance(result, dict)
+                and "pass" in result
+                and ("score" in result or "quality_contract" in result)
+            ):
+                harness_session.record_review(result)
             harness_session.add_context(
                 f"tool-{len(steps)}",
                 f"tool={name} result={json.dumps(result, ensure_ascii=False)[:8_000]}",
