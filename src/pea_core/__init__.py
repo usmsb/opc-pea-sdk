@@ -13,7 +13,35 @@ from .opc_client import CentralChat, CentralEmbedding, CentralLyrics, CentralMus
 from .harness import BaseHarness, TurnResult, parse_action
 from .safety import review_safety_artifact
 from .context_manifest import ContextManifest, ContextSource, build_manifest
-from .complex_task_harness import COMPLEX_TASK_HARNESS_SCHEMA
+# Long-Artifact PEA work must use the exact same convergence semantics as the
+# Agent matrix.  Dockerfiles and the no-build renderer now package these
+# modules.  Keep the old local mirror only for source-only legacy images, where
+# the full refinement entrypoint fails explicitly rather than pretending the
+# two implementations are interchangeable.
+try:
+    from agents.complex_task_harness import (
+        COMPLEX_TASK_HARNESS_SCHEMA,
+        ComplexTaskSession,
+        HarnessConvergenceController,
+        HarnessLoopBudget,
+        HarnessLoopDecision,
+        HarnessObjective,
+        HarnessFailureObservation,
+        classify_harness_output_failure,
+        recovery_action_for_failure,
+    )
+except ModuleNotFoundError:  # pragma: no cover - legacy/source-only fallback
+    from .complex_task_harness import (
+        COMPLEX_TASK_HARNESS_SCHEMA,
+        ComplexTaskSession,
+        HarnessConvergenceController,
+        HarnessLoopBudget,
+        HarnessLoopDecision,
+        HarnessObjective,
+        HarnessFailureObservation,
+        classify_harness_output_failure,
+        recovery_action_for_failure,
+    )
 from .quality_contract import (
     QUALITY_CONTRACT_ID,
     QUALITY_CONTRACT_VERSION,
@@ -29,6 +57,9 @@ __all__ = [
     "BaseHarness", "TurnResult", "parse_action",
     "review_safety_artifact",
     "COMPLEX_TASK_HARNESS_SCHEMA",
+    "ComplexTaskSession", "HarnessConvergenceController", "HarnessLoopBudget",
+    "HarnessLoopDecision", "HarnessObjective",
+    "HarnessFailureObservation", "classify_harness_output_failure", "recovery_action_for_failure",
     "GoalContract", "InteractionRequest", "TaskEnvelope",
     "review_complex_artifact",
     "ContextManifest", "ContextSource", "build_manifest",

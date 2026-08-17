@@ -14,11 +14,21 @@ from typing import Any
 
 try:
     # The full Agent image exposes the canonical implementation.
-    from agents.complex_task_harness import ComplexTaskSession, HarnessObjective
+    from agents.complex_task_harness import (
+        ArtifactQualityWorkflow,
+        ArtifactQualityWorkflowAdapter,
+        ComplexTaskSession,
+        HarnessArtifactRevision,
+        HarnessObjective,
+    )
 except ModuleNotFoundError:  # pragma: no cover - exercised in the slim PEA image
-    # PEA images copy only pea_core; the package-local mirror preserves the
-    # exact public projection without adding the Agent runtime dependency.
+    # Backward-compatible ordinary conversations can still use the local
+    # projection mirror. Long Artifact refinement deliberately stays
+    # unavailable until the image carries the canonical Agent Harness.
     from .complex_task_harness import ComplexTaskSession, HarnessObjective
+    ArtifactQualityWorkflow = None  # type: ignore[assignment,misc]
+    ArtifactQualityWorkflowAdapter = Any  # type: ignore[assignment,misc]
+    HarnessArtifactRevision = Any  # type: ignore[assignment,misc]
 
 from . import context as ctxmod
 from .context_manifest import build_manifest
@@ -305,7 +315,24 @@ class BaseHarness(abc.ABC):
                 await self.checkpoint()
                 break
             await self.checkpoint()
-            result = await self.dispatch(name, self.make_ctx(customer, conv), args)
+            tool_ctx = self.make_ctx(customer, conv)
+            # Domain quality tools receive the durable in-turn issue ledger so
+            # their reviewer can preserve stable identities across repeated
+            # reviews.  This is runtime control metadata, not business content,
+            # and remains optional for older/slim ToolContext implementations.
+            try:
+                setattr(
+                    tool_ctx,
+                    "previous_issue_ledger",
+                    [
+                        item.projection()
+                        for item in harness_session.checkpoint.issue_ledger
+                        if item.status in {"open", "pending_human_confirmation"}
+                    ],
+                )
+            except (AttributeError, TypeError):
+                pass
+            result = await self.dispatch(name, tool_ctx, args)
             if name == "质检" or (
                 isinstance(result, dict)
                 and "pass" in result
@@ -347,6 +374,34 @@ class BaseHarness(abc.ABC):
         return TurnResult(reply=reply, steps=steps, state=state, harness=harness_projection,
                           turn_id=turn_id, pending_interactions=pending_interactions,
                           context_manifest=getattr(self, "_last_context_manifest", {}))
+
+    async def run_artifact_quality_workflow(
+        self,
+        *,
+        objective: HarnessObjective,
+        adapter: ArtifactQualityWorkflowAdapter,
+        run_id: str | None = None,
+    ) -> tuple[ComplexTaskSession, HarnessArtifactRevision | None]:
+        """Run one PEA long-form Artifact through the canonical convergence loop.
+
+        PEA templates provide the domain adapter (generation, semantic review,
+        diagnosis, target-aware editing and local acceptance).  The shared
+        core keeps candidates out of the canonical record until the full gate
+        proves no regression.  A legacy slim image that was not rebuilt with
+        the canonical module fails explicitly instead of silently falling back
+        to an unbounded whole-document rewrite.
+        """
+
+        if ArtifactQualityWorkflow is None:
+            raise RuntimeError(
+                "this PEA image lacks the canonical artifact quality workflow; rebuild with agent_harness and llm_contracts build contexts"
+            )
+        workflow = ArtifactQualityWorkflow()
+        return await workflow.run(
+            objective,
+            adapter=adapter,
+            run_id=run_id,
+        )
 
     async def generate(self, customer: Any, conv: Any, system: str, ask: str,
                        kind: str, title: str, temperature: float = 0.6, max_tokens: int = 2000) -> str:

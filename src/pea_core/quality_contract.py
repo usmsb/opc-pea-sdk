@@ -1,9 +1,9 @@
-"""Image-local mirror of the generic OPC complex-task quality contract.
+"""PEA access to the generic OPC complex-task quality contract.
 
-PEA images intentionally ship only ``pea_core``.  Keep this manifest byte-for-
-byte compatible with ``llm_contracts.quality:complex_task_artifact`` and guard
-that compatibility with repository tests.  The mirror lets a standalone PEA
-declare the same producer/reviewer contract without pulling in the backend.
+Production PEA images include ``llm_contracts`` and use it as their only
+contract source.  The compact local definition below is a source-only fallback
+for legacy development images; it must never become a second production policy
+surface.
 """
 
 from __future__ import annotations
@@ -11,6 +11,20 @@ from __future__ import annotations
 import hashlib
 import json
 from typing import Any
+
+try:
+    # Production PEA images now carry the same ``llm_contracts`` package as
+    # the Agent runtime.  Prefer that registry so generator, reviewer, patch
+    # and E2E roles cannot silently drift by maintaining two prompt manifests.
+    from llm_contracts.quality import (
+        build_stage_quality_prompt as _canonical_build_stage_quality_prompt,
+        get_quality_contract as _canonical_get_quality_contract,
+        quality_contract_binding as _canonical_quality_contract_binding,
+    )
+except ModuleNotFoundError:  # pragma: no cover - legacy/source-only fallback
+    _canonical_build_stage_quality_prompt = None
+    _canonical_get_quality_contract = None
+    _canonical_quality_contract_binding = None
 
 
 QUALITY_CONTRACT_SCHEMA = "opc.quality_contract_manifest.v1"
@@ -53,6 +67,8 @@ QUALITY_OBLIGATIONS: tuple[dict[str, str], ...] = (
 
 
 def quality_contract_manifest() -> dict[str, Any]:
+    if _canonical_get_quality_contract is not None:
+        return _canonical_get_quality_contract(QUALITY_CONTRACT_ID).manifest()
     payload: dict[str, Any] = {
         "schema": QUALITY_CONTRACT_SCHEMA,
         "contract_id": QUALITY_CONTRACT_ID,
@@ -82,6 +98,8 @@ def quality_contract_binding(role: str) -> dict[str, str]:
     normalized_role = str(role or "").strip().lower()
     if normalized_role not in {"generator", "reviewer", "projection", "patch", "controller"}:
         raise ValueError(f"unsupported PEA quality contract role: {role!r}")
+    if _canonical_quality_contract_binding is not None:
+        return _canonical_quality_contract_binding(QUALITY_CONTRACT_ID, normalized_role)
     manifest = quality_contract_manifest()
     return {
         "schema": QUALITY_BINDING_SCHEMA,
@@ -94,6 +112,8 @@ def quality_contract_binding(role: str) -> dict[str, str]:
 
 
 def render_quality_contract(*, role: str = "generator") -> str:
+    if _canonical_build_stage_quality_prompt is not None:
+        return _canonical_build_stage_quality_prompt(QUALITY_CONTRACT_ID, role)
     binding = quality_contract_binding(role)
     manifest = quality_contract_manifest()
     obligations = "\n".join(
