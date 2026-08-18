@@ -18,7 +18,7 @@
 | 工具 | `app/tools/`：谱曲/歌词/质检/支付/记忆/改稿/MV/查数据/改价（Agent 调用，非按钮） |
 | 歌曲生成 | **MiniMax Music 2.5**（`app/providers/minimax.py`），provider 抽象可换 Mureka |
 | 护栏 | `app/guardrails.py`：免费3次/改稿次数/折扣上限/内容红线(LLM)/预算阀门（工具边界确定性） |
-| 钱 | C 端微信支付（服务商子商户）；算力走 OPC 积分子账户（`app/credits.py`） |
+| 钱 | C 端微信支付由 OPC 商业配置中枢托管（直连或服务商均可）；算力走 OPC 积分子账户（`app/credits.py`） |
 | 数据 | 独立 SQLite（`app/models.py`），客户数据隔离 |
 
 ## 运行（沙箱：无需任何密钥即可跑通全功能）
@@ -42,7 +42,7 @@ python3.14 -m tests.run_http           # 对运行中的服务跑 HTTP 全漏斗
 
 ## 转生产（接真实凭证）
 
-1. 配 `.env`（见 `.env.example`）：`DKSG_MINIMAX_API_KEY`（歌曲生成转真），`DKSG_WECHAT_SUB_MCHID`（支付转真）。
+1. 配 PEA 运行时身份（`OPC_LLM_GATEWAY_URL`、`OPC_PEA_ID`、`OPC_SERVICE_TOKEN`、`OPC_OWNER_ID`、`OPC_LLM_MODE=central`）；微信支付、小程序 AppSecret 和域名在 OPC `/app/pea-commerce` 配置并由平台财务审核，不进入 `.env`。
 2. **两件部署前核对**：① MiniMax host（`api.minimaxi.com` vs `api.minimax.io`）② 书面商用授权。
 3. 构建镜像并部署：
 
@@ -51,12 +51,12 @@ docker build -t opc-pea-a:0.1.0 .
 # 渲染独立实例（独立 ns + 独立 DB），见 deploy/pea/
 python ../../deploy/pea/render_pea_instance.py --config ../../deploy/pea/instances/diaokeshiguang.json | kubectl apply -f -
 kubectl -n ns-pea-diaokeshiguang create secret generic pea-diaokeshiguang-env \
-  --from-literal=DKSG_MINIMAX_API_KEY=... --from-literal=DKSG_WECHAT_SUB_MCHID=...
+  --from-literal=OPC_LLM_MODE=central --from-literal=OPC_PEA_ID=... --from-literal=OPC_SERVICE_TOKEN=...
 ```
 
 ## 外部人工闸门（代码已就绪，等审批即生产）
 
-- 微信**服务商进件 / 子商户**（京湾 ISV）：未下来时支付走 mock；下来后填 `DKSG_WECHAT_SUB_MCHID` 即真单。
+- 微信支付进件（直连或服务商/子商户）：在 OPC 商业配置中枢录入、登记专属回调地址并经财务审核后才会生成真单。
 - 微信**小程序提审发布**：`miniprogram/` 工程已就绪，授权第三方平台代提审后发布。
 - MiniMax **商用授权 / 正式 host**。
 

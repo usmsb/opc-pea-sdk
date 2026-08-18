@@ -41,6 +41,77 @@ class _CentralHTTP:
         return data if isinstance(data, dict) else {"data": data}
 
 
+class CentralCommerceError(RuntimeError):
+    """A safe OPC commerce response for a PEA customer surface."""
+
+    def __init__(self, message: str, *, code: str | None = None, status_code: int | None = None):
+        super().__init__(message)
+        self.code = code
+        self.status_code = status_code
+
+
+class CentralCommerce(_CentralHTTP):
+    """PEA-facing payment client that never receives merchant credentials."""
+
+    async def _commerce_request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        try:
+            url, token, _ = _runtime()
+        except RuntimeError as exc:
+            raise CentralCommerceError(
+                "OPC 支付运行身份未完整部署，已拒绝本次支付请求。",
+                code="CENTRAL_COMMERCE_RUNTIME_UNAVAILABLE", status_code=503,
+            ) from exc
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.request(method, f"{url}{path}", json=payload, headers=headers)
+        except httpx.HTTPError as exc:
+            raise CentralCommerceError(
+                "OPC 支付中枢暂时不可达，未向微信发起扣款请求。",
+                code="CENTRAL_COMMERCE_UNREACHABLE", status_code=503,
+            ) from exc
+        try:
+            data = response.json()
+        except ValueError:
+            data = {}
+        if response.status_code >= 400:
+            detail = data.get("detail") if isinstance(data, dict) else None
+            if isinstance(detail, dict):
+                raise CentralCommerceError(
+                    str(detail.get("message") or "OPC 支付服务拒绝本次请求"),
+                    code=str(detail.get("code") or "COMMERCE_REQUEST_FAILED"), status_code=response.status_code,
+                )
+            raise CentralCommerceError(str(detail or "OPC 支付服务暂不可用"), status_code=response.status_code)
+        return data if isinstance(data, dict) else {"data": data}
+
+    async def prepay(
+        self,
+        *,
+        order_id: str,
+        channel: str,
+        amount_cents: int,
+        description: str,
+        openid: str | None,
+        client_ip: str | None,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._commerce_request("POST", "/api/internal/pea/v1/commerce/prepay", {
+            "order_id": order_id,
+            "channel": channel,
+            "amount_cents": amount_cents,
+            "description": description,
+            "openid": openid,
+            "client_ip": client_ip,
+            "idempotency_key": idempotency_key,
+        })
+
+    async def payment_intent(self, intent_id: str) -> dict[str, Any]:
+        return await self._commerce_request("GET", f"/api/internal/pea/v1/commerce/intents/{intent_id}")
+
+    async def mini_program_session(self, code: str) -> dict[str, Any]:
+        return await self._commerce_request("POST", "/api/internal/pea/v1/commerce/mini-program/session", {"code": code})
+
+
 async def attest_runtime(*, deployment_revision: str | None = None,
                          capabilities: list[str] | None = None) -> dict[str, Any] | None:
     """Register/attest the running PEA without making startup brittle.
@@ -130,4 +201,7 @@ class CentralEmbedding(_CentralHTTP):
         return [[float(value) for value in (row.get("embedding") if isinstance(row, dict) else row)] for row in rows]
 
 
-__all__ = ["central_runtime_enabled", "attest_runtime", "CentralChat", "CentralLyrics", "CentralMusic", "CentralEmbedding"]
+__all__ = [
+    "central_runtime_enabled", "attest_runtime", "CentralChat", "CentralLyrics", "CentralMusic", "CentralEmbedding",
+    "CentralCommerce", "CentralCommerceError",
+]

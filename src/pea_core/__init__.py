@@ -9,7 +9,10 @@ from . import context
 from .admin import (EntitySpec, core_entities, make_admin_dependency, make_admin_router,
                     make_token, spec_for, verify_token)
 from .embeddings import DIM, EmbeddingProvider, MiniMaxEmbedding, SandboxEmbedding, cosine
-from .opc_client import CentralChat, CentralEmbedding, CentralLyrics, CentralMusic, attest_runtime, central_runtime_enabled
+from .opc_client import (
+    CentralChat, CentralCommerce, CentralCommerceError, CentralEmbedding, CentralLyrics, CentralMusic,
+    attest_runtime, central_runtime_enabled,
+)
 from .harness import BaseHarness, TurnResult, parse_action
 from .safety import review_safety_artifact
 from .context_manifest import ContextManifest, ContextSource, build_manifest
@@ -65,7 +68,7 @@ __all__ = [
     "ContextManifest", "ContextSource", "build_manifest",
     "VectorMemory", "RollingSummary", "ChunkStore",
     "EmbeddingProvider", "SandboxEmbedding", "MiniMaxEmbedding", "cosine", "DIM",
-    "CentralChat", "CentralEmbedding", "CentralLyrics", "CentralMusic", "attest_runtime", "central_runtime_enabled",
+    "CentralChat", "CentralCommerce", "CentralCommerceError", "CentralEmbedding", "CentralLyrics", "CentralMusic", "attest_runtime", "central_runtime_enabled",
     "context",
     "make_admin_router", "make_admin_dependency", "core_entities", "spec_for", "EntitySpec",
     "make_token", "verify_token",
