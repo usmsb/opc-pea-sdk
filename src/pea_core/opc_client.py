@@ -50,6 +50,15 @@ class CentralCommerceError(RuntimeError):
         self.status_code = status_code
 
 
+class CentralSpeechError(RuntimeError):
+    """A safe OPC central ASR response for a PEA customer surface."""
+
+    def __init__(self, message: str, *, code: str | None = None, status_code: int | None = None):
+        super().__init__(message)
+        self.code = code
+        self.status_code = status_code
+
+
 class CentralCommerce(_CentralHTTP):
     """PEA-facing payment client that never receives merchant credentials."""
 
@@ -110,6 +119,46 @@ class CentralCommerce(_CentralHTTP):
 
     async def mini_program_session(self, code: str) -> dict[str, Any]:
         return await self._commerce_request("POST", "/api/internal/pea/v1/commerce/mini-program/session", {"code": code})
+
+
+class CentralSpeech(_CentralHTTP):
+    """PEA-facing speech-to-text client; the ASR key stays in OPC."""
+
+    async def transcribe(self, audio: bytes, *, filename: str = "voice.m4a",
+                         content_type: str = "audio/m4a") -> dict[str, Any]:
+        try:
+            url, token, _ = _runtime()
+        except RuntimeError as exc:
+            raise CentralSpeechError(
+                "OPC 语音识别运行身份未完整部署，暂不能转写录音。",
+                code="CENTRAL_SPEECH_RUNTIME_UNAVAILABLE", status_code=503,
+            ) from exc
+        key = f"pea-speech-{uuid.uuid4()}"
+        headers = {"Authorization": f"Bearer {token}", "Idempotency-Key": key}
+        try:
+            async with httpx.AsyncClient(timeout=180) as client:
+                response = await client.post(
+                    f"{url}/api/internal/pea/v1/llm/transcribe",
+                    headers=headers,
+                    files={"file": (filename, audio, content_type)},
+                )
+        except httpx.HTTPError as exc:
+            raise CentralSpeechError(
+                "OPC 语音识别中枢暂时不可达。", code="CENTRAL_SPEECH_UNREACHABLE", status_code=503,
+            ) from exc
+        try:
+            data = response.json()
+        except ValueError:
+            data = {}
+        if response.status_code >= 400:
+            detail = data.get("detail") if isinstance(data, dict) else None
+            if isinstance(detail, dict):
+                raise CentralSpeechError(
+                    str(detail.get("message") or "OPC 语音识别失败"),
+                    code=str(detail.get("code") or "SPEECH_REQUEST_FAILED"), status_code=response.status_code,
+                )
+            raise CentralSpeechError(str(detail or "OPC 语音识别失败"), status_code=response.status_code)
+        return data if isinstance(data, dict) else {"text": str(data)}
 
 
 async def attest_runtime(*, deployment_revision: str | None = None,
@@ -203,5 +252,5 @@ class CentralEmbedding(_CentralHTTP):
 
 __all__ = [
     "central_runtime_enabled", "attest_runtime", "CentralChat", "CentralLyrics", "CentralMusic", "CentralEmbedding",
-    "CentralCommerce", "CentralCommerceError",
+    "CentralCommerce", "CentralCommerceError", "CentralSpeech", "CentralSpeechError",
 ]
