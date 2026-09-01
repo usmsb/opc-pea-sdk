@@ -15,6 +15,7 @@ import json
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
+from copy import deepcopy
 from typing import Any, Iterable, Mapping
 
 from .quality_contract import (
@@ -783,6 +784,12 @@ class HarnessConvergenceController:
             "strategy_fingerprints": sorted(self._strategy_fingerprints),
             "replacement_strategy_pending": self._replacement_authorized,
             "progress_strategy_advance_pending": self._progress_advance_authorized,
+            "stagnation": {
+                "last_failure_signature": self._last_failure_signature,
+                "current_count": self.stagnant_observations,
+                "counts": dict(self._stagnation_counts),
+                "identity": deepcopy(self._stagnation_identity),
+            },
             "history": self.history[-32:],
         }
 
