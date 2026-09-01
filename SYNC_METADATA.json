@@ -1,6 +1,6 @@
 {
   "source_repository": "usmsb/opc-platform",
-  "source_ref": "d7583f26371187694ce13125354b1921075578f2",
+  "source_ref": "4822ebca0f711ac690f5d8cff8d39d6c9b19aacf",
   "source_paths": [
     "peas/pea_core",
     "peas/*/README.md"

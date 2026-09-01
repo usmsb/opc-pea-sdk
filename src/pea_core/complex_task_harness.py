@@ -188,6 +188,7 @@ class HarnessLoopBudget:
     max_replans: int = 3
     max_local_transactions: int = 24
     max_protocol_retries: int = 2
+    max_provider_calls: int = 64
     stagnant_observations_before_replan: int = 2
 
     def normalized(self) -> "HarnessLoopBudget":
@@ -201,6 +202,9 @@ class HarnessLoopBudget:
             ),
             max_protocol_retries=max(
                 0, min(12, int(self.max_protocol_retries or 0))
+            ),
+            max_provider_calls=max(
+                1, min(512, int(self.max_provider_calls or 64))
             ),
             stagnant_observations_before_replan=max(
                 1,
@@ -235,6 +239,7 @@ class HarnessConvergenceController:
         self.replans_used = 0
         self.local_transactions_used = 0
         self.protocol_retries_used = 0
+        self.provider_calls_used = 0
         self.stagnant_observations = 0
         self.state = "running"
         self.reason = ""
@@ -420,6 +425,58 @@ class HarnessConvergenceController:
             "failed",
             "provider failure is not safely retryable by the Harness",
             diagnostic={"kind": normalized, "diagnostic": diagnostic},
+        )
+
+    @property
+    def remaining_provider_calls(self) -> int:
+        return max(0, self.budget.max_provider_calls - self.provider_calls_used)
+
+    def require_provider_capacity(
+        self,
+        count: int,
+        *,
+        phase: str,
+        diagnostic: Any = None,
+    ) -> HarnessLoopDecision:
+        required = max(0, int(count or 0))
+        if self.terminal:
+            return self._terminal_noop()
+        if required > self.remaining_provider_calls:
+            return self._finish(
+                "budget_exhausted",
+                "remaining provider-call budget cannot cover the complete repair strategy",
+                diagnostic={
+                    "phase": _text(phase, 160),
+                    "required_provider_calls": required,
+                    "remaining_provider_calls": self.remaining_provider_calls,
+                    "detail": diagnostic,
+                },
+            )
+        return HarnessLoopDecision(
+            action="continue",
+            reason="provider-call capacity available",
+        )
+
+    def reserve_provider_call(
+        self,
+        *,
+        phase: str,
+        diagnostic: Any = None,
+    ) -> HarnessLoopDecision:
+        capacity = self.require_provider_capacity(
+            1, phase=phase, diagnostic=diagnostic
+        )
+        if capacity.terminal:
+            return capacity
+        self.provider_calls_used += 1
+        return self._record(
+            "continue",
+            "provider call reserved before dispatch",
+            diagnostic={
+                "phase": _text(phase, 160),
+                "remaining_provider_calls": self.remaining_provider_calls,
+                "detail": diagnostic,
+            },
         )
 
     def record_local_transaction(
@@ -749,6 +806,7 @@ class HarnessConvergenceController:
             "replans_used": self.replans_used,
             "local_transactions_used": self.local_transactions_used,
             "protocol_retries_used": self.protocol_retries_used,
+            "provider_calls_used": self.provider_calls_used,
             "stagnant_observations": self.stagnant_observations,
         }
         if diagnostic not in (None, "", [], {}):
@@ -780,6 +838,8 @@ class HarnessConvergenceController:
                 "replans": self.replans_used,
                 "local_transactions": self.local_transactions_used,
                 "protocol_retries": self.protocol_retries_used,
+                "provider_calls": self.provider_calls_used,
+                "remaining_provider_calls": self.remaining_provider_calls,
             },
             "strategy_fingerprints": sorted(self._strategy_fingerprints),
             "replacement_strategy_pending": self._replacement_authorized,
