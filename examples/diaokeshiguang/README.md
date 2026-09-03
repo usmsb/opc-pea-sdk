@@ -42,17 +42,9 @@ python3.14 -m tests.run_http           # 对运行中的服务跑 HTTP 全漏斗
 
 ## 转生产（接真实凭证）
 
-1. 配 PEA 运行时身份（`OPC_LLM_GATEWAY_URL`、`OPC_PEA_ID`、`OPC_SERVICE_TOKEN`、`OPC_OWNER_ID`、`OPC_LLM_MODE=central`）；微信支付、小程序 AppSecret 和域名在 OPC `/app/peas` 的统一工作区配置并由平台财务审核，不进入 `.env`。
+1. 在 OPC `/app/peas` 选择已验收 Release，填写生产域名、普通业务变量，并以“覆盖”方式首次设置后台密码、客户访问码及外部凭证；JWT、A2A Token、PEA ID、owner ID、gateway、运行模式、服务 Token、最小权限 OPC Token 由平台派生或生成，任何一项都不进入 `.env` 或 GitHub。
 2. **两件部署前核对**：① MiniMax host（`api.minimaxi.com` vs `api.minimax.io`）② 书面商用授权。
-3. 构建镜像并部署：
-
-```bash
-docker build -t opc-pea-a:0.1.0 .
-# 渲染独立实例（独立 ns + 独立 DB），见 deploy/pea/
-python ../../deploy/pea/render_pea_instance.py --config ../../deploy/pea/instances/diaokeshiguang.json | kubectl apply -f -
-kubectl -n ns-pea-diaokeshiguang create secret generic pea-diaokeshiguang-env \
-  --from-literal=OPC_LLM_MODE=central --from-literal=OPC_PEA_ID=... --from-literal=OPC_SERVICE_TOKEN=...
-```
+3. 点击“一键构建并发布”。OPC 内部租户级执行器自动完成 Preview 验证、同 digest 正式部署、API/H5/Admin 健康检查和小程序代码上传；不再手工构建镜像、创建 Kubernetes Secret 或运行 PEA GitHub 工作流。
 
 ## 外部人工闸门（代码已就绪，等审批即生产）
 
