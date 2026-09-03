@@ -350,10 +350,15 @@ function openDetail(name, id, row){
   }).join("");
   const delBtn = spec.deletable ? `<button class="danger" id="delBtn">删除</button>` : "";
   const saveBtn = spec.editable.length ? `<button id="saveBtn">保存修改</button>` : "";
+  const workflowBtns = name==="rewards"&&row.status==="pending_review" ? `<button id="approveReward">审核通过</button><button class="danger" id="rejectReward">审核拒绝</button>`
+    : name==="rewards"&&row.status==="held" ? `<button id="releaseRewards">释放已过退款期奖励</button>`
+    : name==="referral_rewards"&&row.status==="available" ? `<button id="payReferralReward">记录已转账</button>`
+    : name==="referral_rewards"&&(row.status==="pending_review"||row.status==="held") ? `<button class="danger" id="rejectReferralReward">拒绝/冲销</button>`
+    : name==="withdrawals"&&row.status==="pending_transfer" ? `<button id="completeWithdrawal">记录已转账</button><button class="danger" id="failWithdrawal">记录转账失败</button>` : "";
   $("#drawerHost").innerHTML = `<div class="drawer-bg"><div class="drawer">
     <div class="head"><h2>${esc(spec.label)} 详情</h2><button class="ghost" id="closeBtn">关闭</button></div>
     ${fields}
-    <div class="actions">${saveBtn}${delBtn}<span style="flex:1"></span></div>
+    <div class="actions">${saveBtn}${workflowBtns}${delBtn}<span style="flex:1"></span></div>
   </div></div>`;
   $(".drawer-bg").onclick=e=>{ if(e.target===$(".drawer-bg")) closeDrawer(); };
   $("#closeBtn").onclick=closeDrawer;
@@ -369,6 +374,14 @@ function openDetail(name, id, row){
     try{ await api.del(`/${name}/${id}`); toast("已删除"); closeDrawer(); loadRows(); }
     catch(e){ toast("删除失败："+e.message); }
   };
+  const done=async(path,body,msg)=>{try{await api.post(path,body||{});toast(msg);closeDrawer();loadRows();}catch(e){toast("操作失败："+e.message);}};
+  if($("#approveReward")) $("#approveReward").onclick=()=>done(`/rewards/${id}/approve`,{},"已通过，进入退款观察期");
+  if($("#rejectReward")) $("#rejectReward").onclick=()=>{const reason=prompt("请输入拒绝原因");if(reason)done(`/rewards/${id}/reject`,{reason},"已拒绝");};
+  if($("#releaseRewards")) $("#releaseRewards").onclick=()=>done('/rewards/release-eligible',{},"已检查并释放符合条件的奖励");
+  if($("#completeWithdrawal")) $("#completeWithdrawal").onclick=()=>{const payout_ref=prompt("请输入微信/银行转账单号");if(payout_ref)done(`/withdrawals/${id}/complete`,{payout_ref},"提现已完成并入账");};
+  if($("#failWithdrawal")) $("#failWithdrawal").onclick=()=>{const reason=prompt("请输入失败原因");if(reason)done(`/withdrawals/${id}/fail`,{reason},"余额已退回用户钱包");};
+  if($("#payReferralReward")) $("#payReferralReward").onclick=()=>{const reference=prompt("请输入转账单号");if(reference)done(`/referral-rewards/${id}/pay`,{reference},"奖励已记录为已转账");};
+  if($("#rejectReferralReward")) $("#rejectReferralReward").onclick=()=>{const reference=prompt("请输入拒绝或冲销原因");if(reference)done(`/referral-rewards/${id}/reject`,{reference},"奖励已冲销");};
 }
 function openCreate(name){
   const spec=specOf(name);

@@ -151,7 +151,9 @@ def core_entities(m: Any) -> dict[str, EntitySpec]:
             search=["title", "kind", "pet_name"], order_by="updated_at", deletable=True),
         "orders": spec_for(
             m.Order, "订单", columns=["id", "customer_id", "sku", "amount_cents", "status", "pay_provider", "paid_at", "created_at"],
-            editable=["status", "pay_ref"], search=["sku", "pay_ref", "customer_id"], deletable=True),
+            # 订单是中央商业中枢的本地投影，状态只能由支付/退款事件推进，
+            # 不得由管理后台伪造或删除财务事实。
+            editable=[], search=["sku", "pay_ref", "customer_id"], deletable=False),
         "memory_items": spec_for(
             m.MemoryItem, "客户记忆", columns=["id", "customer_id", "key", "value", "updated_at"],
             editable=["value"], search=["key", "customer_id"], order_by="updated_at", deletable=True),
@@ -327,6 +329,12 @@ def make_admin_router(*, entities: dict[str, EntitySpec], get_settings: Callable
     async def update_row(name: str, rid: str, body: dict, db: AsyncSession = Depends(get_db),
                          u: str = Depends(require_admin)) -> dict:
         e = _spec(name)
+        requested = set((body or {}).keys())
+        forbidden = requested - set(e.editable)
+        if not requested:
+            raise HTTPException(status_code=400, detail="修改内容不能为空")
+        if forbidden:
+            raise HTTPException(status_code=400, detail=f"字段不允许修改：{', '.join(sorted(forbidden))}")
         obj = (await db.execute(select(e.model).where(getattr(e.model, _pk(e.model)) == rid))).scalar_one_or_none()
         if obj is None:
             raise HTTPException(status_code=404, detail="记录不存在")

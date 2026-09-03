@@ -117,6 +117,17 @@ class CentralCommerce(_CentralHTTP):
     async def payment_intent(self, intent_id: str) -> dict[str, Any]:
         return await self._commerce_request("GET", f"/api/internal/pea/v1/commerce/intents/{intent_id}")
 
+    async def refund(
+        self, *, intent_id: str, amount_cents: int, reason: str, idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._commerce_request("POST", "/api/internal/pea/v1/commerce/refunds", {
+            "intent_id": intent_id, "amount_cents": amount_cents, "reason": reason,
+            "idempotency_key": idempotency_key,
+        })
+
+    async def refund_status(self, refund_id: str) -> dict[str, Any]:
+        return await self._commerce_request("GET", f"/api/internal/pea/v1/commerce/refunds/{refund_id}")
+
     async def mini_program_session(self, code: str) -> dict[str, Any]:
         return await self._commerce_request("POST", "/api/internal/pea/v1/commerce/mini-program/session", {"code": code})
 

@@ -56,6 +56,12 @@ from .quality_contract import (
 from .interaction import GoalContract, InteractionRequest, TaskEnvelope
 from .artifact_quality import review_complex_artifact
 from .memory import ChunkStore, RollingSummary, VectorMemory
+from .payment_ui import enrich_payment_client
+from .refunds import request_order_refund, sync_order_refund
+from .legal import make_legal_router
+from .brand import apply_brand_settings, load_brand_values
+from .readiness import production_readiness
+from .a2a_auth import require_a2a_request
 
 __all__ = [
     "BaseHarness", "TurnResult", "parse_action",
@@ -73,4 +79,10 @@ __all__ = [
     "context",
     "make_admin_router", "make_admin_dependency", "core_entities", "spec_for", "EntitySpec",
     "make_token", "verify_token",
+    "enrich_payment_client",
+    "request_order_refund", "sync_order_refund",
+    "make_legal_router",
+    "apply_brand_settings", "load_brand_values",
+    "production_readiness",
+    "require_a2a_request",
 ]

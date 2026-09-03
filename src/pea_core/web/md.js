@@ -2,12 +2,18 @@
    支持：标题/粗体/斜体/行内代码/代码块/引用/分割线/有序无序列表/表格/链接。window.mdToHtml(md)。 */
 (function () {
   function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function safeHref(raw) {
+    var href = String(raw || "").trim();
+    return /^(https?:|mailto:)/i.test(href) ? href.replace(/"/g, "&quot;") : "#";
+  }
   function inline(s) {
     s = esc(s);
     s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
     s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
     s = s.replace(/(^|[^*])\*([^*\s][^*]*?)\*/g, "$1<em>$2</em>");
-    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (_, label, href) {
+      return '<a href="' + safeHref(href) + '" target="_blank" rel="noopener">' + label + '</a>';
+    });
     return s;
   }
   function buildTable(rows) {
