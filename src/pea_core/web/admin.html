@@ -122,7 +122,7 @@
   <aside>
     <div class="brand"><span class="dot"></span><span id="brandName">后台</span></div>
     <nav id="nav"></nav>
-    <a class="sidelink" href="/creator.html" title="主理人对话经营台（看数据/改价/发券）">💬 创客台 · 对话经营 →</a>
+    <a class="sidelink" href="../creator.html" title="主理人对话经营台（看数据/改价/发券）">💬 创客台 · 对话经营 →</a>
     <div class="who"><span id="who"></span> · <a id="logout" href="#">退出</a></div>
   </aside>
   <main id="main"></main>
@@ -133,10 +133,11 @@
 
 <script>
 const $ = s => document.querySelector(s);
+const PEA_BASE = window.__OPC_PEA_BASE_PATH__ || "";
 const api = {
   token: localStorage.getItem("opc_admin_token") || "",
   async call(method, path, body){
-    const r = await fetch("/api/admin"+path, {
+    const r = await fetch(PEA_BASE+"/api/admin"+path, {
       method, headers: {"Content-Type":"application/json", ...(this.token?{Authorization:"Bearer "+this.token}:{})},
       body: body!==undefined ? JSON.stringify(body) : undefined,
     });
@@ -327,7 +328,7 @@ function wireUploads(){
         const file=f.files[0]; if(!file) return;
         const fd=new FormData(); fd.append("file", file); toast("上传中…");
         try{
-          const r=await fetch("/api/admin/upload",{method:"POST",headers:{Authorization:"Bearer "+api.token},body:fd});
+          const r=await fetch(PEA_BASE+"/api/admin/upload",{method:"POST",headers:{Authorization:"Bearer "+api.token},body:fd});
           const data=await r.json(); if(!r.ok) throw new Error(data.detail||"上传失败");
           input.value=data.url; toast("已上传");
           let img=input.parentElement.parentElement.querySelector("img.thumb");
