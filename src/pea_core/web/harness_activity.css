@@ -1,0 +1,18 @@
+.harness-activity{width:100%;flex:1 1 100%;min-width:0;margin:8px 0 2px;border:1px solid var(--line,rgba(255,255,255,.16));border-radius:14px;background:var(--card,rgba(255,255,255,.05));overflow:hidden;color:var(--ink2,#ccc);font-size:12px;line-height:1.5}
+.harness-activity summary{list-style:none;display:flex;align-items:center;gap:8px;min-height:40px;padding:9px 12px;cursor:pointer;user-select:none}
+.harness-activity summary::-webkit-details-marker{display:none}
+.harness-activity summary::after{content:'⌄';margin-left:auto;color:var(--mut,#aaa);font-size:16px;transition:transform .18s}
+.harness-activity[open] summary::after{transform:rotate(180deg)}
+.harness-activity .ha-indicator{width:7px;height:7px;flex:none;border-radius:50%;background:var(--gold,#9bd);box-shadow:0 0 0 3px color-mix(in srgb,var(--gold,#9bd) 14%,transparent)}
+.harness-activity[data-state="waiting"] .ha-indicator{background:#eab866}
+.harness-activity[data-state="attention"] .ha-indicator{background:#e88b87}
+.harness-activity .ha-title{color:var(--ink,#fff);font-weight:600;white-space:nowrap}
+.harness-activity .ha-summary{flex:1;min-width:0;color:var(--mut,#aaa);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.harness-activity ol{list-style:none;margin:0;padding:0 12px 11px 17px;border-top:1px solid var(--line,rgba(255,255,255,.12))}
+.harness-activity li{position:relative;padding:9px 0 0 13px;color:var(--ink2,#ccc);word-break:break-word}
+.harness-activity li::before{content:'✓';position:absolute;left:-5px;color:var(--gold,#9bd)}
+.harness-activity li[data-state="waiting"]::before{content:'◌';color:#eab866}
+.harness-activity li[data-state="attention"]::before{content:'!';color:#e88b87}
+.harness-working{display:flex;align-items:center;gap:9px;padding:11px 13px;border:1px solid var(--line,rgba(255,255,255,.16));border-radius:14px;background:var(--card,rgba(255,255,255,.05));color:var(--ink2,#ccc);font-size:12px}
+.harness-working .ha-indicator{width:7px;height:7px;border-radius:50%;background:var(--gold,#9bd);animation:ha-pulse 1.4s ease-in-out infinite}
+@keyframes ha-pulse{50%{opacity:.3;transform:scale(.7)}}
